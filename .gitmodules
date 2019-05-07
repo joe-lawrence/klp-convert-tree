@@ -1,0 +1,3 @@
+[submodule "scripts/livepatch"]
+	path = scripts/livepatch
+	url = https://github.com/joe-lawrence/klp-convert.git
