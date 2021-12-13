@@ -1,5 +1,4 @@
-hostprogs			:= klp-convert
-always-y			:= $(hostprogs)
+hostprogs-always-y		:= klp-convert
 
 klp-convert-objs		:= klp-convert.o elf.o
 
