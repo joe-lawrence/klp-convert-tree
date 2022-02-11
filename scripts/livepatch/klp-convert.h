@@ -39,6 +39,9 @@ struct sympos {
 #endif
 
 struct klp_module_reloc {
-	void *sym;
-	unsigned int sympos;
+	union {
+		void *sym;
+		uint64_t sym64;	/* Force 64-bit width */
+	};
+	uint32_t sympos;
 } __packed;
