@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# BUILD_ARCHES - list and order of architectures to build.
+BUILD_ARCHES="${BUILD_ARCHES:-x86_64 ppc64le ppc32 s390 arm64}"
+
+# OUTDIR_PREFIX - kernel build output directory, will have build
+# architecture suffix added.  Use emtpy "OUTDIR_PREFIX=" value to
+# disable separate kernel bulid output
+OUTDIR_PREFIX="${OUTDIR_PREFIX-/tmp/klp-convert}"
+
+# MAKE_CROSS - associative array to select cross compiler make
+# invocation.
+#
+# 1) Intel lkp-tests project crosstool wrapper: see make.cross for info
+# on COMPILER and COMPILER_INSTALL_PATH
+declare -A MAKE_CROSS=( \
+    ["arm64"]="$(dirname "$0")/make.cross" \
+    ["ppc32"]="$(dirname "$0")/make.cross" \
+    ["ppc64le"]="$(dirname "$0")/make.cross" \
+    ["s390"]="$(dirname "$0")/make.cross" \
+    ["x86_64"]="$(dirname "$0")/make.cross" )
+COMPILER=
+COMPILER_INSTALL_PATH="${COMPILER_INSTALL_PATH:-$HOME/0day}"
+
+# 2) Fedora cross compilers, install gcc-$ARCH-linux-gnu,
+# gcc-c++-$ARCH-linux-gnu, binutils-$ARCH-linux-gnu packages
+# declare -A MAKE_CROSS=( \
+#     ["arm64"]="make CROSS_COMPILE=arm-linux-gnu-" \
+#     ["ppc32"]="make CROSS_COMPILE=ppc64le-linux-gnu-" \
+#     ["ppc64le"]="make CROSS_COMPILE=ppc64le-linux-gnu-" \
+#     ["s390"]="make CROSS_COMPILE=s390x-linux-gnu-" \
+#     ["x86_64"]="make" )
+
+
+# vim:sw=4:ts=4:et:
