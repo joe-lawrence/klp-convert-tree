@@ -1,0 +1,222 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2022 Joe Lawrence <joe.lawrence@redhat.com>
+
+usage()
+{
+    cat <<-EOF
+
+	cross-dev ( build [make options] | clean | config )
+
+	    build [make options] - run kernel build for all BUILD_ARCHES,
+	                           optional make options passed to kernel build
+	    clean                - clean kernel build for all BUILD_ARCHES
+	    config               - configure kernel for all BUILD_ARCHES
+
+	Environment variables:
+
+	    BUILD_ARCHES
+	    Space-delimited string of architecture short names.  Currently supported:
+	    x86_64 ppc64le ppc32 s390 arm64
+
+	    COMPILER_INSTALL_PATH
+	    Directory to save and run cross-compilers.  Default path: \$HOME/0day
+
+	    COMPILER
+	    Compiler and version to use.  See comments in make.cross file.
+
+	    OUTDIR_PREFIX
+	    Directory prefix to save kernel build artifacts.  Default path:
+	    /tmp/klp-convert-\$ARCH
+
+	    These variables may be set through the environment, command line, or via
+	    auto-sourced .cross-dev file.
+EOF
+}
+
+# Source optional .cross-dev environment file.
+if [[ -e "$(dirname "$0")/.cross-dev" ]] ; then
+    # shellcheck disable=SC1090
+    source "$(dirname "$0")/.cross-dev"
+fi
+
+
+pcol()
+{
+    local col="${1}"
+    local msg="${2}"
+    echo -e "${col}${msg}${COLOR_RESET}"
+}
+
+perr()
+{
+    local msg="${1}"
+    pcol "${COLOR_ERROR}" "${msg}" 1>&2
+}
+
+psuccess()
+{
+    local msg="${1}"
+    pcol "${COLOR_SUCCESS}" "${msg}"
+}
+
+pinfo()
+{
+    local msg="${1}"
+    pcol "${COLOR_BOLD}" "${msg}"
+}
+
+
+config_kernel()
+{
+    local BUILD_ARCH="$1"
+
+    local ARCH="$BUILD_ARCH"
+    if [[ "$BUILD_ARCH" =~ "ppc" ]]; then
+        ARCH="powerpc"
+    fi
+
+    local OUTDIR="."
+    if [[ -n "$OUTDIR_PREFIX" ]]; then
+        OUTDIR="$OUTDIR_PREFIX-$BUILD_ARCH"
+    fi
+
+    export ARCH
+    export COMPILER_INSTALL_PATH
+
+    make defconfig O="$OUTDIR"
+
+    if [[ "$BUILD_ARCH" == "ppc64le" ]] ; then
+        ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_CPU_BIG_ENDIAN n
+        ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_CPU_LITTLE_ENDIAN y
+    elif [[ "$BUILD_ARCH" == "ppc32" ]] ; then
+        ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_PPC64 n
+    fi
+
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_FTRACE y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_KALLSYMS_ALL y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_FUNCTION_TRACER y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_DYNAMIC_FTRACE y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_DYNAMIC_DEBUG y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_LIVEPATCH y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_RUNTIME_TESTING_MENU y
+    ./scripts/config --file "$OUTDIR"/.config --set-val CONFIG_TEST_LIVEPATCH m
+
+    # shellcheck disable=SC2153
+    COMPILER="$COMPILER" ${MAKE_CROSS[$BUILD_ARCH]} olddefconfig O="$OUTDIR"
+}
+
+build_kernel()
+{
+    local BUILD_ARCH="$1"
+    shift
+    local MAKE_OPTIONS="$*"
+
+    local ARCH="$BUILD_ARCH"
+    if [[ "$BUILD_ARCH" =~ "ppc" ]]; then
+        ARCH="powerpc"
+    fi
+
+    local OUTDIR="."
+    if [[ -n "$OUTDIR_PREFIX" ]]; then
+        OUTDIR="$OUTDIR_PREFIX-$BUILD_ARCH"
+    fi
+
+    export ARCH
+    export COMPILER_INSTALL_PATH
+    export COMPILER
+
+    # shellcheck disable=SC2086
+    COMPILER="$COMPILER" ${MAKE_CROSS[$BUILD_ARCH]} O="$OUTDIR" $MAKE_OPTIONS
+}
+
+
+top_of_kernel_tree()
+{
+    # Copied from checkpatch.pl
+
+    local -a tree_check=("COPYING" "CREDITS" "Kbuild" "MAINTAINERS" \
+                         "Makefile" "README" "Documentation" "arch" \
+                         "include" "drivers" "fs" "init" "ipc" "kernel" \
+                         "lib" "scripts")
+    local check
+
+    for check in "${tree_check[@]}"; do
+        [[ ! -e "./$check" ]] && return 1
+    done
+
+    return 0
+}
+
+
+# Terminal colors
+if [[ -t 1 ]]; then
+    COLOR_RESET="\033[0m"
+    COLOR_BOLD="\033[1m"
+    COLOR_ERROR="\033[0;31m"
+    COLOR_SUCCESS="\033[0;32m"
+fi
+
+# Command line processing
+case "$1" in
+
+    build)
+
+        if ! top_of_kernel_tree; then
+            perr "Must be run from the top-level dir. of a kernel tree"
+            exit 2
+        fi
+
+        for ARCH in $BUILD_ARCHES; do
+            pinfo "\nBuilding $ARCH ..."
+            if build_kernel "$ARCH" "${@:2}"; then
+                psuccess "[ $ARCH : SUCCESS ]"
+            else
+                perr "[ $ARCH : FAIL ]"
+            fi
+
+        done
+        ;;
+
+    clean)
+
+        if ! top_of_kernel_tree; then
+            perr "Must be run from the top-level dir. of a kernel tree"
+            exit 2
+        fi
+
+        for ARCH in $BUILD_ARCHES; do
+            pinfo "\nCleaning $ARCH ..."
+            if build_kernel "$ARCH" clean; then
+                psuccess "[ $ARCH : SUCCESS ]"
+            else
+                perr "[ $ARCH : FAIL ]"
+            fi
+        done
+        ;;
+
+    config)
+
+        if ! top_of_kernel_tree; then
+            perr "Must be run from the top-level dir. of a kernel tree"
+            exit 2
+        fi
+
+        for ARCH in $BUILD_ARCHES; do
+            pinfo "\nConfiguring $ARCH ..."
+            if config_kernel "$ARCH"; then
+                psuccess "[ $ARCH : SUCCESS ]"
+            else
+                perr "[ $ARCH : FAIL ]"
+            fi
+        done
+        ;;
+
+    *)
+        usage
+        ;;
+
+esac
+
+
+# vim:sw=4:ts=4:et:
