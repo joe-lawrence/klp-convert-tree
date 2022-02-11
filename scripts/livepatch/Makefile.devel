@@ -1,0 +1,22 @@
+CFLAGS += -MMD -MP
+CFLAGS += -Wall -g -Werror
+LDLIBS = -lelf
+
+TARGETS = klp-convert
+SOURCES = klp-convert.c \
+          elf.c
+
+all: $(TARGETS)
+
+-include $(SOURCES:.c=.d)
+
+klp-convert: klp-convert.o elf.o
+
+tests: klp-convert
+	$(MAKE) -C tests/
+
+clean:
+	$(RM) $(TARGETS) *.{o,d}
+	$(MAKE) -C tests/ clean
+
+.PHONY: all tests clean
