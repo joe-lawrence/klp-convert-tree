@@ -51,6 +51,7 @@
 *.xz
 *.zst
 Module.symvers
+modules.livepatch
 modules.order
 
 #

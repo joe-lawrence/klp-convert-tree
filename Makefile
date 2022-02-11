@@ -1172,6 +1172,7 @@ PHONY += prepare0
 export extmod_prefix = $(if $(KBUILD_EXTMOD),$(KBUILD_EXTMOD)/)
 export MODORDER := $(extmod_prefix)modules.order
 export MODULES_NSDEPS := $(extmod_prefix)modules.nsdeps
+export MODULES_LIVEPATCH := $(extmod-prefix)modules.livepatch
 
 ifeq ($(KBUILD_EXTMOD),)
 
@@ -1578,7 +1579,7 @@ endif # CONFIG_MODULES
 CLEAN_FILES += include/ksym vmlinux.symvers modules-only.symvers \
 	       modules.builtin modules.builtin.modinfo modules.nsdeps \
 	       compile_commands.json .thinlto-cache rust/test rust/doc \
-	       .vmlinux.objs .vmlinux.export.c
+	       modules.livepatch .vmlinux.objs .vmlinux.export.c
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_FILES += include/config include/generated          \
@@ -1913,24 +1914,6 @@ modules: modpost
 ifneq ($(KBUILD_MODPOST_NOFINAL),1)
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal
 endif
-
-quiet_cmd_klp_map = KLP     symbols.klp
-
-define cmd_klp_map
-	$(shell echo "klp-convert-symbol-data.0.1" > $(objtree)/symbols.klp)				\
-	$(shell echo "*vmlinux" >> $(objtree)/symbols.klp)						\
-	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(objtree)/symbols.klp)		\
-	$(foreach ko, $(sort $(shell cat modules.order)),						\
-		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))						\
-		$(eval obj = $(patsubst %.ko,%.o,$(ko)))						\
-		$(if $(shell grep -o LIVEPATCH $(mod)),,						\
-			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(objtree)/symbols.klp)	\
-			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(objtree)/symbols.klp)))
-endef
-
-modules: modules_check
-	$(if $(CONFIG_LIVEPATCH), $(call cmd,klp_map))
-	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
 PHONY += modules_check
 modules_check: $(MODORDER)
