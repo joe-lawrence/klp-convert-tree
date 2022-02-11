@@ -278,8 +278,14 @@ struct section *create_rela_section(struct elf *elf, const char *name,
 	}
 	sec->sh.sh_name = -1;
 	sec->sh.sh_type = SHT_RELA;
-	sec->sh.sh_entsize = sizeof(GElf_Rela);
-	sec->sh.sh_addralign = 8;
+
+	if (elf->elf_class == ELFCLASS32) {
+		sec->sh.sh_entsize = sizeof(Elf32_Rela);
+		sec->sh.sh_addralign = 4;
+	} else {
+		sec->sh.sh_entsize = sizeof(Elf64_Rela);
+		sec->sh.sh_addralign = 8;
+	}
 	sec->sh.sh_flags = SHF_ALLOC;
 
 	sec->elf_data = malloc(sizeof(*sec->elf_data));
@@ -442,7 +448,10 @@ static int update_symtab(struct elf *elf)
 	symtab->sh.sh_link = find_section_by_name(elf, ".strtab")->idx;
 
 	/* create new symtab buffer */
-	size = nr_syms * symtab->sh.sh_entsize;
+	if (elf->elf_class == ELFCLASS32)
+		size = nr_syms * sizeof(Elf32_Sym);
+	else
+		size = nr_syms * sizeof(Elf64_Sym);
 	buf = malloc(size);
 	if (!buf) {
 		WARN("malloc failed");
@@ -452,7 +461,23 @@ static int update_symtab(struct elf *elf)
 
 	offset = 0;
 	list_for_each_entry(sym, &elf->symbols, list) {
-		memcpy(buf + offset, &sym->sym, symtab->sh.sh_entsize);
+
+		if (elf->elf_class == ELFCLASS32) {
+			/* Manually convert to 32-bit Elf32_Sym */
+			Elf32_Sym sym32;
+
+			sym32.st_name  = sym->sym.st_name;
+			sym32.st_info  = sym->sym.st_info;
+			sym32.st_other = sym->sym.st_other;
+			sym32.st_shndx = sym->sym.st_shndx;
+			sym32.st_value = sym->sym.st_value;
+			sym32.st_size  = sym->sym.st_size;
+			memcpy(buf + offset, &sym32, sizeof(Elf32_Sym));
+		} else {
+			/* Existing 64-bit GElf_Syms are fine */
+			memcpy(buf + offset, &sym->sym, sizeof(Elf64_Sym));
+		}
+
 		offset += symtab->sh.sh_entsize;
 
 		if (sym->bind == STB_LOCAL)
@@ -485,7 +510,7 @@ static int update_relas(struct elf *elf)
 	struct section *sec, *symtab;
 	struct rela *rela;
 	int nr_relas, idx, size;
-	GElf_Rela *relas;
+	void *relas;
 
 	symtab = find_section_by_name(elf, ".symtab");
 
@@ -501,7 +526,11 @@ static int update_relas(struct elf *elf)
 		list_for_each_entry(rela, &sec->relas, list)
 			nr_relas++;
 
-		size = nr_relas * sizeof(*relas);
+		if (elf->elf_class == ELFCLASS32)
+			size = nr_relas * sizeof(Elf32_Rela);
+		else
+			size = nr_relas * sizeof(Elf64_Rela);
+
 		relas = malloc(size);
 		if (!relas) {
 			WARN("malloc failed");
@@ -514,10 +543,21 @@ static int update_relas(struct elf *elf)
 
 		idx = 0;
 		list_for_each_entry(rela, &sec->relas, list) {
-			relas[idx].r_offset = rela->offset;
-			relas[idx].r_addend = rela->addend;
-			relas[idx].r_info = GELF_R_INFO(rela->sym->idx,
-							rela->type);
+			if (elf->elf_class == ELFCLASS32) {
+				Elf32_Rela *relas32 = relas;
+
+				relas32[idx].r_offset = rela->offset;
+				relas32[idx].r_addend = rela->addend;
+				relas32[idx].r_info = ELF32_R_INFO(rela->sym->idx,
+								   rela->type);
+			} else {
+				Elf64_Rela *relas64 = relas;
+
+				relas64[idx].r_offset = rela->offset;
+				relas64[idx].r_addend = rela->addend;
+				relas64[idx].r_info = ELF64_R_INFO(rela->sym->idx,
+								   rela->type);
+			}
 			idx++;
 		}
 	}
@@ -722,6 +762,12 @@ struct elf *elf_open(const char *name)
 
 	if (!gelf_getehdr(elf->elf, &elf->ehdr)) {
 		perror("gelf_getehdr");
+		goto err;
+	}
+
+	elf->elf_class = gelf_getclass(elf->elf);
+	if ((elf->elf_class != ELFCLASS32) && (elf->elf_class != ELFCLASS64)) {
+		WARN("invalid elf class");
 		goto err;
 	}
 

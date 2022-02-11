@@ -55,6 +55,7 @@ struct elf {
 	GElf_Ehdr ehdr;
 	int fd;
 	char *name;
+	int elf_class;
 	struct list_head sections;
 	struct list_head symbols;
 };
