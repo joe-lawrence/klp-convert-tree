@@ -690,6 +690,75 @@ static void free_converted_resources(struct elf *klp_elf)
 	}
 }
 
+/*
+ * Checks if section may be skipped (conditions)
+ */
+static bool skip_section(struct section *sec)
+{
+	if (!is_rela_section(sec))
+		return true;
+
+	if (is_klp_rela_section(sec->name))
+		return true;
+
+	return false;
+}
+
+/*
+ * Checks if rela conversion is supported in given section
+ */
+static bool supported_section(struct section *sec, char *object_name)
+{
+#if 0
+	/*
+	 * klp-relocations forbidden in sections that otherwise would
+	 * match in allowed_prefixes[]
+	 */
+	static const char * const not_allowed[] = {
+		".rela.data.rel.ro",
+		".rela.data.rel.ro.local",
+		".rela.data..ro_after_init",
+		NULL
+	};
+#endif
+
+	/* klp-relocations allowed in sections only for vmlinux */
+	static const char * const allowed_vmlinux[] = {
+		".rela__jump_table",
+		NULL
+	};
+
+	/* klp-relocations allowed in sections with prefixes */
+	static const char * const allowed_prefixes[] = {
+		".rela.data",
+		".rela.rodata",	// supported ???
+		".rela.sdata",
+		".rela.text",
+		".rela.toc",
+		NULL
+	};
+
+	const char * const *name;
+
+#if 0
+	for (name = not_allowed; *name; name++)
+		if (strcmp(sec->name, *name) == 0)
+			return false;
+#endif
+
+	if (strcmp(object_name, "vmlinux") == 0) {
+		for (name = allowed_vmlinux; *name; name++)
+			if (strcmp(sec->name, *name) == 0)
+				return true;
+	}
+
+	for (name = allowed_prefixes; *name; name++)
+		if (strncmp(sec->name, *name, strlen(*name)) == 0)
+			return true;
+
+	return false;
+}
+
 int main(int argc, const char **argv)
 {
 	const char *klp_in_module, *klp_out_module, *symbols_list;
@@ -723,17 +792,24 @@ int main(int argc, const char **argv)
 	}
 
 	list_for_each_entry(sec, &klp_elf->sections, list) {
-		if (!is_rela_section(sec) ||
-		    is_klp_rela_section(sec->name))
+		if (skip_section(sec))
 			continue;
 
 		list_for_each_entry(rela, &sec->relas, list) {
 			if (skip_symbol(rela->sym))
 				continue;
 
+			/* rela needs to be converted */
+
 			if (!find_sympos(rela->sym, &sp)) {
 				WARN("Unable to find missing symbol: %s",
 						rela->sym->name);
+				return -1;
+			}
+			if (!supported_section(sec, sp.object_name)) {
+				WARN("Conversion not supported for symbol: %s section: %s object: %s",
+						rela->sym->name, sec->name,
+						sp.object_name);
 				return -1;
 			}
 			if (!convert_rela(sec, rela, &sp, klp_elf)) {
