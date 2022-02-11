@@ -719,8 +719,13 @@ KBUILD_MODULES :=
 KBUILD_BUILTIN := 1
 
 # If we have only "make modules", don't compile built-in objects.
+# When we're building livepatch modules, we need to consider the
+# built-in objects during the descend as well, as built-in objects may
+# hold symbols which are referenced from livepatches and are required by
+# klp-convert post-processing tool for resolving these cases.
+
 ifeq ($(MAKECMDGOALS),modules)
-  KBUILD_BUILTIN :=
+  KBUILD_BUILTIN := $(if $(CONFIG_LIVEPATCH),1)
 endif
 
 # If we have "make <whatever> modules", compile modules
@@ -1580,7 +1585,7 @@ MRPROPER_FILES += include/config include/generated          \
 		  arch/$(SRCARCH)/include/generated .objdiff \
 		  debian snap tar-install \
 		  .config .config.old .version \
-		  Module.symvers \
+		  Module.symvers symbols.klp \
 		  certs/signing_key.pem \
 		  certs/x509.genkey \
 		  vmlinux-gdb.py \
@@ -1908,6 +1913,24 @@ modules: modpost
 ifneq ($(KBUILD_MODPOST_NOFINAL),1)
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modfinal
 endif
+
+quiet_cmd_klp_map = KLP     symbols.klp
+
+define cmd_klp_map
+	$(shell echo "klp-convert-symbol-data.0.1" > $(objtree)/symbols.klp)				\
+	$(shell echo "*vmlinux" >> $(objtree)/symbols.klp)						\
+	$(shell nm -f posix $(objtree)/vmlinux | cut -d\  -f1 >> $(objtree)/symbols.klp)		\
+	$(foreach ko, $(sort $(shell cat modules.order)),						\
+		$(eval mod = $(patsubst %.ko,%.mod,$(ko)))						\
+		$(eval obj = $(patsubst %.ko,%.o,$(ko)))						\
+		$(if $(shell grep -o LIVEPATCH $(mod)),,						\
+			$(shell echo "*$(shell basename -s .ko $(ko))" >> $(objtree)/symbols.klp)	\
+			$(shell nm -f posix $(obj) | cut -d\  -f1 >> $(objtree)/symbols.klp)))
+endef
+
+modules: modules_check
+	$(if $(CONFIG_LIVEPATCH), $(call cmd,klp_map))
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
 PHONY += modules_check
 modules_check: $(MODORDER)
