@@ -547,7 +547,7 @@ static void move_rela(struct rela *r)
 {
 	/* Move the converted rela to klp rela section */
 	list_del(&r->list);
-	list_add(&r->list, &r->klp_rela_sec->relas);
+	list_add_tail(&r->list, &r->klp_rela_sec->relas);
 }
 
 /* Checks if given symbol name matches a symbol in exp_symbols */
