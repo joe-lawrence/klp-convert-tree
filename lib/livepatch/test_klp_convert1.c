@@ -25,7 +25,7 @@ static noinline void print_homonym_string(void)
 	pr_info("get_homonym_string(), 1: %s\n", get_homonym_string());
 }
 
-void print_static_strings(void)
+static noinline void print_static_strings(void)
 {
 	pr_info("klp_string.12345 = %s\n", klp_string_a);
 	pr_info("klp_string.67890 = %s\n", klp_string_b);
