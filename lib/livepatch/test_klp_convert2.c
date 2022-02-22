@@ -8,18 +8,18 @@
 #include <linux/livepatch.h>
 #include "test_klp_convert.h"
 
-void print_saved_command_line(void)
+static noinline void print_saved_command_line(void)
 {
 	pr_info("saved_command_line (auto): %s\n", saved_command_line);
 }
 
-void print_driver_name(void)
+static noinline void print_driver_name(void)
 {
 	pr_info("driver_name, 0: %s\n", driver_name);
 	pr_info("test_klp_get_driver_name(), (auto): %s\n", test_klp_get_driver_name());
 }
 
-void print_homonym_string(void)
+static noinline void print_homonym_string(void)
 {
 	pr_info("homonym_string, 2: %s\n", homonym_string);
 	pr_info("get_homonym_string(), 2: %s\n", get_homonym_string());
