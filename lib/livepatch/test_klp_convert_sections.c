@@ -17,20 +17,20 @@ extern char *saved_command_line;
  * references within the same function.
  */
 __section(".text.print_saved_command_line")
-void print_saved_command_line(void)
+static noinline void print_saved_command_line(void)
 {
 	pr_info("saved_command_line (1): %s\n", saved_command_line);
 }
 
 __section(".text.print_saved_command_line2")
-void print_saved_command_line2(void)
+static noinline void print_saved_command_line2(void)
 {
 	pr_info("saved_command_line (1): %s\n", saved_command_line);
 	pr_info("saved_command_line (2): %s\n", saved_command_line);
 }
 
 __section(".text.print_saved_command_line3")
-void print_saved_command_line3(void)
+static noinline void print_saved_command_line3(void)
 {
 	pr_info("saved_command_line (1): %s\n", saved_command_line);
 	pr_info("saved_command_line (2): %s\n", saved_command_line);
@@ -44,7 +44,7 @@ void print_saved_command_line3(void)
 const char *(*p_test_klp_get_driver_name)(void) = test_klp_get_driver_name;
 const char *(*p_get_homonym_string)(void) = get_homonym_string;
 
-void print_via_function_pointers(void)
+static noinline void print_via_function_pointers(void)
 {
 	pr_info("test_klp_get_driver_name(): %s\n", test_klp_get_driver_name());
 	pr_info("p_test_klp_get_driver_name(): %s\n", p_test_klp_get_driver_name());
