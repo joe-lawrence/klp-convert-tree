@@ -31,6 +31,15 @@ struct converted_sym {
 	struct sympos sympos;
 };
 
+#define safe_snprintf(var, size, format, args...)			\
+	({								\
+		size_t __size = size;					\
+		int __ret;						\
+									\
+		__ret = snprintf(var, size, format, ##args);		\
+		__ret < 0 || (size_t)__ret >= __size;			\
+	})
+
 static void free_syms_lists(void)
 {
 	struct symbol_entry *entry, *aux;
@@ -529,8 +538,8 @@ static struct section *get_or_create_klp_rela_section(struct section *oldsec,
 		return NULL;
 	}
 
-	if (snprintf(name, length, KLP_RELA_PREFIX "%s.%s", sp->object_name,
-				oldsec->base->name) >= length) {
+	if (safe_snprintf(name, length, KLP_RELA_PREFIX "%s.%s",
+			  sp->object_name, oldsec->base->name)) {
 		WARN("Length error (%s)", name);
 		free(name);
 		return NULL;
@@ -554,7 +563,7 @@ static bool convert_symbol(struct symbol *s, struct sympos *sp)
 	char pos[4];	/* assume that pos will never be > 999 */
 	unsigned int length;
 
-	if (snprintf(pos, sizeof(pos), "%d", sp->pos) > sizeof(pos)) {
+	if (safe_snprintf(pos, sizeof(pos), "%d", sp->pos)) {
 		WARN("Insufficient buffer for expanding sympos (%s.%s,%d)\n",
 				sp->object_name, sp->symbol_name, sp->pos);
 		return false;
@@ -570,8 +579,8 @@ static bool convert_symbol(struct symbol *s, struct sympos *sp)
 		return false;
 	}
 
-	if (snprintf(name, length, KLP_SYM_PREFIX "%s.%s,%s", sp->object_name,
-				sp->symbol_name, pos) >= length) {
+	if (safe_snprintf(name, length, KLP_SYM_PREFIX "%s.%s,%s",
+                          sp->object_name, sp->symbol_name, pos)) {
 
 		WARN("Length error (%s%s.%s,%s)", KLP_SYM_PREFIX,
 				sp->object_name, sp->symbol_name, pos);
