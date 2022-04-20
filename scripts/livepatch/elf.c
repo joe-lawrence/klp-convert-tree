@@ -44,7 +44,7 @@ struct section *find_section_by_name(struct elf *elf, const char *name)
 }
 
 static struct section *find_section_by_index(struct elf *elf,
-					     unsigned int idx)
+					     int idx)
 {
 	struct section *sec;
 
@@ -71,7 +71,7 @@ static int read_sections(struct elf *elf)
 	Elf_Scn *s = NULL;
 	struct section *sec;
 	size_t shstrndx, sections_nr;
-	int i;
+	size_t i;
 
 	if (elf_getshdrnum(elf->elf, &sections_nr)) {
 		perror("elf_getshdrnum");
@@ -210,7 +210,7 @@ static int read_relas(struct elf *elf)
 {
 	struct section *sec;
 	struct rela *rela;
-	int i;
+	int relas_nr, i;
 	unsigned int symndx;
 
 	list_for_each_entry(sec, &elf->sections, list) {
@@ -226,7 +226,8 @@ static int read_relas(struct elf *elf)
 
 		sec->base->rela = sec;
 
-		for (i = 0; i < sec->sh.sh_size / sec->sh.sh_entsize; i++) {
+		relas_nr = sec->sh.sh_size / sec->sh.sh_entsize;
+		for (i = 0; i < relas_nr; i++) {
 			rela = malloc(sizeof(*rela));
 			if (!rela) {
 				perror("malloc");
@@ -276,7 +277,7 @@ struct section *create_rela_section(struct elf *elf, const char *name,
 		WARN("strdup failed");
 		return NULL;
 	}
-	sec->sh.sh_name = -1;
+	sec->sh.sh_name = ~0;
 	sec->sh.sh_type = SHT_RELA;
 
 	if (elf->elf_class == ELFCLASS32) {
@@ -316,7 +317,7 @@ static int update_shstrtab(struct elf *elf)
 	orig_size = new_size = shstrtab->size;
 
 	list_for_each_entry(sec, &elf->sections, list) {
-		if (sec->sh.sh_name != -1)
+		if (sec->sh.sh_name != ~0U)
 			continue;
 		new_size += strlen(sec->name) + 1;
 	}
@@ -333,7 +334,7 @@ static int update_shstrtab(struct elf *elf)
 
 	offset = orig_size;
 	list_for_each_entry(sec, &elf->sections, list) {
-		if (sec->sh.sh_name != -1)
+		if (sec->sh.sh_name != ~0U)
 			continue;
 		sec->sh.sh_name = offset;
 		len = strlen(sec->name) + 1;
@@ -375,7 +376,7 @@ static int update_strtab(struct elf *elf)
 	orig_size = new_size = strtab->size;
 
 	list_for_each_entry(sym, &elf->symbols, list) {
-		if (sym->sym.st_name != -1)
+		if (sym->sym.st_name != ~0U)
 			continue;
 		new_size += strlen(sym->name) + 1;
 	}
@@ -392,7 +393,7 @@ static int update_strtab(struct elf *elf)
 
 	offset = orig_size;
 	list_for_each_entry(sym, &elf->symbols, list) {
-		if (sym->sym.st_name != -1)
+		if (sym->sym.st_name != ~0U)
 			continue;
 		sym->sym.st_name = offset;
 		len = strlen(sym->name) + 1;

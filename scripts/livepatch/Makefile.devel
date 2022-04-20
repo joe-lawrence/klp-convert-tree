@@ -1,5 +1,5 @@
 CFLAGS += -MMD -MP
-CFLAGS += -Wall -g -Werror
+CFLAGS += -Wall -g -Werror -Wsign-compare
 LDLIBS = -lelf
 
 TARGETS = klp-convert
