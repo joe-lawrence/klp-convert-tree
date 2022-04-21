@@ -84,12 +84,11 @@ static int read_sections(struct elf *elf)
 	}
 
 	for (i = 0; i < sections_nr; i++) {
-		sec = malloc(sizeof(*sec));
+		sec = calloc(1, sizeof(*sec));
 		if (!sec) {
-			perror("malloc");
+			perror("calloc");
 			return -1;
 		}
-		memset(sec, 0, sizeof(*sec));
 
 		INIT_LIST_HEAD(&sec->relas);
 
@@ -154,12 +153,11 @@ static int read_symbols(struct elf *elf)
 	symbols_nr = symtab->sh.sh_size / symtab->sh.sh_entsize;
 
 	for (i = 0; i < symbols_nr; i++) {
-		sym = malloc(sizeof(*sym));
+		sym = calloc(1, sizeof(*sym));
 		if (!sym) {
-			perror("malloc");
+			perror("calloc");
 			return -1;
 		}
-		memset(sym, 0, sizeof(*sym));
 
 		sym->idx = i;
 
@@ -228,12 +226,11 @@ static int read_relas(struct elf *elf)
 
 		relas_nr = sec->sh.sh_size / sec->sh.sh_entsize;
 		for (i = 0; i < relas_nr; i++) {
-			rela = malloc(sizeof(*rela));
+			rela = calloc(1, sizeof(*rela));
 			if (!rela) {
-				perror("malloc");
+				perror("calloc");
 				return -1;
 			}
-			memset(rela, 0, sizeof(*rela));
 
 			if (!gelf_getrela(sec->elf_data, i, &rela->rela)) {
 				perror("gelf_getrela");
@@ -263,12 +260,11 @@ struct section *create_rela_section(struct elf *elf, const char *name,
 {
 	struct section *sec;
 
-	sec = malloc(sizeof(*sec));
+	sec = calloc(1, sizeof(*sec));
 	if (!sec) {
-		WARN("malloc failed");
+		WARN("calloc failed");
 		return NULL;
 	}
-	memset(sec, 0, sizeof(*sec));
 	INIT_LIST_HEAD(&sec->relas);
 
 	sec->base = base;
@@ -289,12 +285,11 @@ struct section *create_rela_section(struct elf *elf, const char *name,
 	}
 	sec->sh.sh_flags = SHF_ALLOC;
 
-	sec->elf_data = malloc(sizeof(*sec->elf_data));
+	sec->elf_data = calloc(1, sizeof(*sec->elf_data));
 	if (!sec->elf_data) {
-		WARN("malloc failed");
+		WARN("calloc failed");
 		return NULL;
 	}
-	memset(sec->elf_data, 0, sizeof(*sec->elf_data));
 	sec->elf_data->d_type = ELF_T_RELA;
 
 	list_add_tail(&sec->list, &elf->sections);
@@ -453,12 +448,11 @@ static int update_symtab(struct elf *elf)
 		size = nr_syms * sizeof(Elf32_Sym);
 	else
 		size = nr_syms * sizeof(Elf64_Sym);
-	buf = malloc(size);
+	buf = calloc(1, size);
 	if (!buf) {
-		WARN("malloc failed");
+		WARN("calloc failed");
 		return -1;
 	}
-	memset(buf, 0, size);
 
 	offset = 0;
 	list_for_each_entry(sym, &elf->symbols, list) {
@@ -739,12 +733,11 @@ struct elf *elf_open(const char *name)
 
 	elf_version(EV_CURRENT);
 
-	elf = malloc(sizeof(*elf));
+	elf = calloc(1, sizeof(*elf));
 	if (!elf) {
-		perror("malloc");
+		perror("calloc");
 		return NULL;
 	}
-	memset(elf, 0, sizeof(*elf));
 
 	INIT_LIST_HEAD(&elf->sections);
 	INIT_LIST_HEAD(&elf->symbols);
