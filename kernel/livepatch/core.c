@@ -261,6 +261,41 @@ static int klp_resolve_symbols(Elf_Shdr *sechdrs, const char *strtab,
 	return 0;
 }
 
+static int klp_write_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
+				    const char *shstrtab, const char *strtab,
+				    unsigned int symndx, unsigned int secndx,
+				    const char *objname, bool apply)
+{
+	int cnt, ret;
+	char sec_objname[MODULE_NAME_LEN];
+	Elf_Shdr *sec = sechdrs + secndx;
+
+	/*
+	 * Format: .klp.rela.sec_objname.section_name
+	 * See comment in klp_resolve_symbols() for an explanation
+	 * of the selected field width value.
+	 */
+	cnt = sscanf(shstrtab + sec->sh_name, ".klp.rela.%55[^.]",
+		     sec_objname);
+	if (cnt != 1) {
+		pr_err("section %s has an incorrectly formatted name\n",
+		       shstrtab + sec->sh_name);
+		return -EINVAL;
+	}
+
+	if (strcmp(objname ? objname : "vmlinux", sec_objname))
+		return 0;
+
+	ret = klp_resolve_symbols(sechdrs, strtab, symndx, sec, sec_objname);
+	if (ret)
+		return ret;
+
+	if (apply)
+		return apply_relocate_add(sechdrs, strtab, symndx, secndx, pmod);
+	clear_relocate_add(sechdrs, strtab, symndx, secndx, pmod);
+	return 0;
+}
+
 /*
  * At a high-level, there are two types of klp relocation sections: those which
  * reference symbols which live in vmlinux; and those which reference symbols
@@ -289,31 +324,8 @@ int klp_apply_section_relocs(struct module *pmod, Elf_Shdr *sechdrs,
 			     unsigned int symndx, unsigned int secndx,
 			     const char *objname)
 {
-	int cnt, ret;
-	char sec_objname[MODULE_NAME_LEN];
-	Elf_Shdr *sec = sechdrs + secndx;
-
-	/*
-	 * Format: .klp.rela.sec_objname.section_name
-	 * See comment in klp_resolve_symbols() for an explanation
-	 * of the selected field width value.
-	 */
-	cnt = sscanf(shstrtab + sec->sh_name, KLP_RELA_PREFIX "%55[^.]",
-		     sec_objname);
-	if (cnt != 1) {
-		pr_err("section %s has an incorrectly formatted name\n",
-		       shstrtab + sec->sh_name);
-		return -EINVAL;
-	}
-
-	if (strcmp(objname ? objname : "vmlinux", sec_objname))
-		return 0;
-
-	ret = klp_resolve_symbols(sechdrs, strtab, symndx, sec, sec_objname);
-	if (ret)
-		return ret;
-
-	return apply_relocate_add(sechdrs, strtab, symndx, secndx, pmod);
+	return klp_write_section_relocs(pmod, sechdrs, shstrtab, strtab, symndx,
+					secndx, objname, true);
 }
 
 /*
@@ -762,8 +774,9 @@ static int klp_init_func(struct klp_object *obj, struct klp_func *func)
 			   func->old_sympos ? func->old_sympos : 1);
 }
 
-static int klp_apply_object_relocs(struct klp_patch *patch,
-				   struct klp_object *obj)
+static int klp_write_object_relocs(struct klp_patch *patch,
+				   struct klp_object *obj,
+				   bool apply)
 {
 	int i, ret;
 	struct klp_modinfo *info = patch->mod->klp_info;
@@ -774,15 +787,27 @@ static int klp_apply_object_relocs(struct klp_patch *patch,
 		if (!(sec->sh_flags & SHF_RELA_LIVEPATCH))
 			continue;
 
-		ret = klp_apply_section_relocs(patch->mod, info->sechdrs,
+		ret = klp_write_section_relocs(patch->mod, info->sechdrs,
 					       info->secstrings,
 					       patch->mod->core_kallsyms.strtab,
-					       info->symndx, i, obj->name);
+					       info->symndx, i, obj->name, apply);
 		if (ret)
 			return ret;
 	}
 
 	return 0;
+}
+
+static int klp_apply_object_relocs(struct klp_patch *patch,
+				   struct klp_object *obj)
+{
+	return klp_write_object_relocs(patch, obj, true);
+}
+
+static void klp_clear_object_relocs(struct klp_patch *patch,
+				    struct klp_object *obj)
+{
+	klp_write_object_relocs(patch, obj, false);
 }
 
 /* parts of the initialization that is done only when the object is loaded */
@@ -1172,7 +1197,7 @@ static void klp_cleanup_module_patches_limited(struct module *mod,
 			klp_unpatch_object(obj);
 
 			klp_post_unpatch_callback(obj);
-
+			klp_clear_object_relocs(patch, obj);
 			klp_free_object_loaded(obj);
 			break;
 		}
