@@ -2,6 +2,7 @@
 
 TEST_PROGS_EXTENDED := functions.sh
 TEST_PROGS := \
+	test-song.sh \
 	test-livepatch.sh \
 	test-callbacks.sh \
 	test-shadow-vars.sh \
