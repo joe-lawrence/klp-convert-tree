@@ -14,17 +14,31 @@
  * patching updates to occur in the livepatch module as well as the
  * target module that defines the static keys.
  */
-static void print_key_status(char *msg)
+static void print_key_status(const char *msg)
 {
+	struct static_key_true *p_test_klp_true_key;
+	struct static_key_false *p_test_klp_false_key;
+
 	pr_info("%s: %s\n", __func__, msg);
 
 	/* static_key_enable() only tests the key value */
 	pr_info("static_key_enabled(&tracepoint_printk_key) is %s\n",
 		static_key_enabled(&tracepoint_printk_key) ? "true" : "false");
-	pr_info("static_key_enabled(&test_klp_true_key) is %s\n",
-		static_key_enabled(&test_klp_true_key) ? "true" : "false");
-	pr_info("static_key_enabled(&test_klp_false_key) is %s\n",
-		static_key_enabled(&test_klp_false_key) ? "true" : "false");
+
+	/*
+	 * Verify non-zero klp-relocations through pointers.  Direct
+	 * null-check would result in the compiler warning about symbol
+	 * addresses always evaluating as true.
+	 */
+	p_test_klp_true_key = &test_klp_true_key;
+	if (p_test_klp_true_key)
+		pr_info("static_key_enabled(&test_klp_true_key) is %s\n",
+			static_key_enabled(&test_klp_true_key) ? "true" : "false");
+
+	p_test_klp_false_key = &test_klp_false_key;
+	if (p_test_klp_false_key)
+		pr_info("static_key_enabled(&test_klp_false_key) is %s\n",
+			static_key_enabled(&test_klp_false_key) ? "true" : "false");
 
 	/*
 	 * static_branch_(un)likely() requires code patching when the
@@ -33,6 +47,21 @@ static void print_key_status(char *msg)
 	pr_info("static_branch_unlikely(&tracepoint_printk_key) is %s\n",
 		static_branch_unlikely(&tracepoint_printk_key) ? "true" : "false");
 }
+
+/* provide a sysfs handle to invoke debug functions */
+static int print_debug;
+static int print_debug_set(const char *val, const struct kernel_param *kp)
+{
+	print_key_status(__func__);
+
+	return 0;
+}
+static const struct kernel_param_ops print_debug_ops = {
+	.set = print_debug_set,
+	.get = param_get_int,
+};
+module_param_cb(print_debug, &print_debug_ops, &print_debug, 0200);
+MODULE_PARM_DESC(print_debug, "print klp-convert debugging info");
 
 /*
  * sysfs interface to poke the key

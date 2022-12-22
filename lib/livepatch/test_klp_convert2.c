@@ -8,21 +8,39 @@
 #include <linux/livepatch.h>
 #include "test_klp_convert.h"
 
+/*
+ * Wrappers to verify non-zero klp-relocation str/func pointers.  Direct
+ * null-check would result in the compiler warning about symbol addresses
+ * always evaluating as true.
+ */
+static void print_string(const char *label, const char *str)
+{
+	if (str)
+		pr_info("%s: %s\n", label, str);
+}
+
+static void print_return_string(const char *label, const char *func(void))
+{
+	if (func)
+		pr_info("%s: %s\n", label, func());
+}
+
 static noinline void print_saved_command_line(void)
 {
-	pr_info("saved_command_line (auto): %s\n", saved_command_line);
+	print_string("saved_command_line (auto)", saved_command_line);
 }
 
 static noinline void print_driver_name(void)
 {
-	pr_info("driver_name, 0: %s\n", driver_name);
-	pr_info("test_klp_get_driver_name(), (auto): %s\n", test_klp_get_driver_name());
+	print_string("driver_name, 0", driver_name);
+	print_return_string("test_klp_get_driver_name(), (auto)",
+		test_klp_get_driver_name);
 }
 
 static noinline void print_homonym_string(void)
 {
-	pr_info("homonym_string, 2: %s\n", homonym_string);
-	pr_info("get_homonym_string(), 2: %s\n", get_homonym_string());
+	print_string("homonym_string, 2", homonym_string);
+	print_return_string("get_homonym_string(), 2", get_homonym_string);
 }
 
 /* provide a sysfs handle to invoke debug functions */

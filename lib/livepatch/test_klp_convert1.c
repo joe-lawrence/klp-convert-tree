@@ -8,27 +8,45 @@
 #include <linux/livepatch.h>
 #include "test_klp_convert.h"
 
+/*
+ * Wrappers to verify non-zero klp-relocation str/func pointers.  Direct
+ * null-check would result in the compiler warning about symbol addresses
+ * always evaluating as true.
+ */
+static void print_string(const char *label, const char *str)
+{
+	if (str)
+		pr_info("%s: %s\n", label, str);
+}
+
+static void print_return_string(const char *label, const char *func(void))
+{
+	if (func)
+		pr_info("%s: %s\n", label, func());
+}
+
 static noinline void print_saved_command_line(void)
 {
-	pr_info("saved_command_line, 0: %s\n", saved_command_line);
+	print_string("saved_command_line, 0", saved_command_line);
 }
 
 static noinline void print_driver_name(void)
 {
-	pr_info("driver_name, 0: %s\n", driver_name);
-	pr_info("test_klp_get_driver_name(), 0: %s\n", test_klp_get_driver_name());
+	print_string("driver_name, 0", driver_name);
+	print_return_string("test_klp_get_driver_name(), 0",
+		test_klp_get_driver_name);
 }
 
 static noinline void print_homonym_string(void)
 {
-	pr_info("homonym_string, 1: %s\n", homonym_string);
-	pr_info("get_homonym_string(), 1: %s\n", get_homonym_string());
+	print_string("homonym_string, 1", homonym_string);
+	print_return_string("get_homonym_string(), 1", get_homonym_string);
 }
 
 static noinline void print_static_strings(void)
 {
-	pr_info("klp_string.12345 = %s\n", klp_string_a);
-	pr_info("klp_string.67890 = %s\n", klp_string_b);
+	print_string("klp_string.12345", klp_string_a);
+	print_string("klp_string.67890", klp_string_b);
 }
 
 /* provide a sysfs handle to invoke debug functions */

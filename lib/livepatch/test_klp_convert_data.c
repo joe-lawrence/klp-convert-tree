@@ -51,6 +51,26 @@ static int * const p_static_const_large[4] = {
 // static int * __ro_after_init p_static_ro_after_init = &static_ro_after_init;
 static int * __read_mostly p_static_read_mostly = &static_read_mostly;
 
+/*
+ * Wrappers to verify non-zero klp-relocation int pointers.  Direct
+ * null-check would result in the compiler warning about symbol addresses
+ * always evaluating as true.
+ */
+static void print_int(const char *label, void *ptr)
+{
+	if (ptr)
+		pr_info("%s: %x\n", label, *(int *) ptr);
+}
+
+static void print_int4(const char *label, void *ptr1, void *ptr2,
+			 void *ptr3, void *ptr4)
+{
+	if (ptr1 && ptr2 && ptr3 && ptr3)
+		pr_info("%s: %x %x %x %x\n", label,
+			*(int *) ptr1, *(int *) ptr2,
+			*(int *) ptr3, *(int *) ptr4);
+}
+
 static void print_variables(void)
 {
 	/* Small local */
@@ -89,45 +109,45 @@ static void print_variables(void)
 		&static_const_local_large[2], &static_const_local_large[3],
 	};
 
-	pr_info("local_small: %x\n", *p_local_small);
-	pr_info("const_local_small: %x\n", *p_const_local_small);
-	pr_info("static_local_small: %x\n", *p_static_local_small);
-	pr_info("static_const_local_small: %x\n", *p_static_const_local_small);
-	pr_info("local_large[0..3]: %x %x %x %x\n",
-		*p_local_large[0], *p_local_large[1],
-		*p_local_large[2], *p_local_large[3]);
-	pr_info("const_local_large[0..3]: %x %x %x %x\n",
-		*p_const_local_large[0], *p_const_local_large[1],
-		*p_const_local_large[2], *p_const_local_large[3]);
-	pr_info("static_local_large[0..3]: %x %x %x %x\n",
-		*p_static_local_large[0], *p_static_local_large[1],
-		*p_static_local_large[2], *p_static_local_large[3]);
-	pr_info("static_const_local_large[0..3]: %x %x %x %x\n",
-		*p_static_const_local_large[0], *p_static_const_local_large[1],
-		*p_static_const_local_large[2], *p_static_const_local_large[3]);
+	print_int("local_small", p_local_small);
+	print_int("const_local_small", p_const_local_small);
+	print_int("static_local_small", p_static_local_small);
+	print_int("static_const_local_small", p_static_const_local_small);
+	print_int4("local_large[0..3]",
+		p_local_large[0], p_local_large[1],
+		p_local_large[2], p_local_large[3]);
+	print_int4("const_local_large[0..3]",
+		p_const_local_large[0], p_const_local_large[1],
+		p_const_local_large[2], p_const_local_large[3]);
+	print_int4("static_local_large[0..3]",
+		p_static_local_large[0], p_static_local_large[1],
+		p_static_local_large[2], p_static_local_large[3]);
+	print_int4("static_const_local_large[0..3]",
+		p_static_const_local_large[0], p_static_const_local_large[1],
+		p_static_const_local_large[2], p_static_const_local_large[3]);
 
-	pr_info("global_small: %x\n", *p_global_small);
+	print_int("global_small", p_global_small);
 	// .rela.data.rel.ro, .rela.rodata supported ???:
-	pr_info("const_global_small: %x\n", *p_const_global_small);
-	pr_info("static_small: %x\n", *p_static_small);
-	pr_info("static_const_small: %x\n", *p_static_const_small);
-	pr_info("global_large[0..3]: %x %x %x %x\n",
-		*p_global_large[0], *p_global_large[1],
-		*p_global_large[2], *p_global_large[3]);
+	print_int("const_global_small", p_const_global_small);
+	print_int("static_small", p_static_small);
+	print_int("static_const_small", p_static_const_small);
+	print_int4("global_large[0..3]",
+		p_global_large[0], p_global_large[1],
+		p_global_large[2], p_global_large[3]);
 	// .rela.data.rel.ro, .rela.rodata supported ???:
-	pr_info("const_global_large[0..3]: %x %x %x %x\n",
-		*p_const_global_large[0], *p_const_global_large[1],
-		*p_const_global_large[2], *p_const_global_large[3]);
-	pr_info("static_large[0..3]: %x %x %x %x\n",
-		*p_static_large[0], *p_static_large[1],
-		*p_static_large[2], *p_static_large[3]);
-	pr_info("static_const_large[0..3]: %x %x %x %x\n",
-		*p_static_const_large[0], *p_static_const_large[1],
-		*p_static_const_large[2], *p_static_const_large[3]);
+	print_int4("const_global_large[0..3]",
+		p_const_global_large[0], p_const_global_large[1],
+		p_const_global_large[2], p_const_global_large[3]);
+	print_int4("static_large[0..3]",
+		p_static_large[0], p_static_large[1],
+		p_static_large[2], p_static_large[3]);
+	print_int4("static_const_large[0..3]",
+		p_static_const_large[0], p_static_const_large[1],
+		p_static_const_large[2], p_static_const_large[3]);
 
 	// .rela.data..ro_after_init supported ???:
-	// pr_info("static_ro_after_init: %x\n", *p_static_ro_after_init);
-	pr_info("static_read_mostly: %x\n", *p_static_read_mostly);
+	// print_int("static_ro_after_init", p_static_ro_after_init);
+	print_int("static_read_mostly", p_static_read_mostly);
 }
 
 /* provide a sysfs handle to invoke debug functions */

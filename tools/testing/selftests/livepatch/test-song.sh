@@ -33,6 +33,7 @@ saved_cmdline=$(cat /proc/cmdline)
 load_lp $MOD_KLP_CONVERT1
 load_mod $MOD_KLP_CONVERT_MOD
 unload_mod $MOD_KLP_CONVERT_MOD
+echo 1 > /sys/module/$MOD_KLP_CONVERT1/parameters/print_debug
 load_mod $MOD_KLP_CONVERT_MOD
 echo 1 > /sys/module/$MOD_KLP_CONVERT1/parameters/print_debug
 disable_lp $MOD_KLP_CONVERT1
@@ -42,6 +43,7 @@ unload_mod $MOD_KLP_CONVERT_MOD
 load_lp $MOD_KLP_CONVERT2
 load_mod $MOD_KLP_CONVERT_MOD
 unload_mod $MOD_KLP_CONVERT_MOD
+echo 1 > /sys/module/$MOD_KLP_CONVERT2/parameters/print_debug
 load_mod $MOD_KLP_CONVERT_MOD
 echo 1 > /sys/module/$MOD_KLP_CONVERT2/parameters/print_debug
 disable_lp $MOD_KLP_CONVERT2
@@ -58,6 +60,7 @@ livepatch: '$MOD_KLP_CONVERT1': patching complete
 livepatch: applying patch '$MOD_KLP_CONVERT1' to loading module '$MOD_KLP_CONVERT_MOD'
 % rmmod $MOD_KLP_CONVERT_MOD
 livepatch: reverting patch '$MOD_KLP_CONVERT1' on unloading module '$MOD_KLP_CONVERT_MOD'
+$MOD_KLP_CONVERT1: saved_command_line, 0: $saved_cmdline
 % modprobe $MOD_KLP_CONVERT_MOD
 livepatch: applying patch '$MOD_KLP_CONVERT1' to loading module '$MOD_KLP_CONVERT_MOD'
 $MOD_KLP_CONVERT1: saved_command_line, 0: $saved_cmdline
@@ -65,8 +68,8 @@ $MOD_KLP_CONVERT1: driver_name, 0: $MOD_KLP_CONVERT_MOD
 $MOD_KLP_CONVERT1: test_klp_get_driver_name(), 0: $MOD_KLP_CONVERT_MOD
 $MOD_KLP_CONVERT1: homonym_string, 1: homonym string A
 $MOD_KLP_CONVERT1: get_homonym_string(), 1: homonym string A
-test_klp_convert1: klp_string.12345 = lib/livepatch/test_klp_convert_mod_a.c static string
-test_klp_convert1: klp_string.67890 = lib/livepatch/test_klp_convert_mod_b.c static string
+test_klp_convert1: klp_string.12345: lib/livepatch/test_klp_convert_mod_a.c static string
+test_klp_convert1: klp_string.67890: lib/livepatch/test_klp_convert_mod_b.c static string
 % echo 0 > /sys/kernel/livepatch/$MOD_KLP_CONVERT1/enabled
 livepatch: '$MOD_KLP_CONVERT1': initializing unpatching transition
 livepatch: '$MOD_KLP_CONVERT1': starting unpatching transition
@@ -84,6 +87,7 @@ livepatch: '$MOD_KLP_CONVERT2': patching complete
 livepatch: applying patch '$MOD_KLP_CONVERT2' to loading module '$MOD_KLP_CONVERT_MOD'
 % rmmod $MOD_KLP_CONVERT_MOD
 livepatch: reverting patch '$MOD_KLP_CONVERT2' on unloading module '$MOD_KLP_CONVERT_MOD'
+$MOD_KLP_CONVERT2: saved_command_line (auto): $saved_cmdline
 % modprobe $MOD_KLP_CONVERT_MOD
 livepatch: applying patch '$MOD_KLP_CONVERT2' to loading module '$MOD_KLP_CONVERT_MOD'
 $MOD_KLP_CONVERT2: saved_command_line (auto): $saved_cmdline
@@ -107,10 +111,9 @@ start_test "klp-convert data relocations (late module patching, relocation clear
 load_lp $MOD_KLP_CONVERT_DATA
 load_mod $MOD_KLP_CONVERT_MOD
 unload_mod $MOD_KLP_CONVERT_MOD
-load_mod $MOD_KLP_CONVERT_MOD
-
 echo 1 > /sys/module/$MOD_KLP_CONVERT_DATA/parameters/print_debug
-
+load_mod $MOD_KLP_CONVERT_MOD
+echo 1 > /sys/module/$MOD_KLP_CONVERT_DATA/parameters/print_debug
 disable_lp $MOD_KLP_CONVERT_DATA
 unload_lp $MOD_KLP_CONVERT_DATA
 unload_mod $MOD_KLP_CONVERT_MOD
@@ -168,10 +171,9 @@ start_test "klp-convert static keys (late module patching, relocation clearing)"
 load_lp $MOD_KLP_CONVERT_KEYS
 load_mod $MOD_KLP_CONVERT_KEYS_MOD
 unload_mod $MOD_KLP_CONVERT_KEYS_MOD
+echo 1 > /sys/module/$MOD_KLP_CONVERT_KEYS/parameters/print_debug
 load_mod $MOD_KLP_CONVERT_KEYS_MOD
-
 echo 1 > /sys/module/$MOD_KLP_CONVERT_KEYS/parameters/enable_false_key
-
 disable_lp $MOD_KLP_CONVERT_KEYS
 unload_lp $MOD_KLP_CONVERT_KEYS
 unload_mod $MOD_KLP_CONVERT_KEYS_MOD
@@ -201,6 +203,9 @@ $MOD_KLP_CONVERT_KEYS_MOD: static_key_enabled(&test_klp_false_key) is false
 $MOD_KLP_CONVERT_KEYS_MOD: static_branch_likely(&test_klp_true_key) is false
 $MOD_KLP_CONVERT_KEYS_MOD: static_branch_unlikely(&test_klp_false_key) is false
 livepatch: reverting patch '$MOD_KLP_CONVERT_KEYS' on unloading module '$MOD_KLP_CONVERT_KEYS_MOD'
+$MOD_KLP_CONVERT_KEYS: print_key_status: print_debug_set
+$MOD_KLP_CONVERT_KEYS: static_key_enabled(&tracepoint_printk_key) is false
+$MOD_KLP_CONVERT_KEYS: static_branch_unlikely(&tracepoint_printk_key) is false
 % modprobe $MOD_KLP_CONVERT_KEYS_MOD
 livepatch: applying patch '$MOD_KLP_CONVERT_KEYS' to loading module '$MOD_KLP_CONVERT_KEYS_MOD'
 $MOD_KLP_CONVERT_KEYS_MOD: print_key_status: initial conditions
