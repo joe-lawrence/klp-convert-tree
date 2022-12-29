@@ -141,9 +141,9 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 	Elf64_Sym *sym;
 	void *loc;
 	u64 val;
-	u64 zero = 0ULL;
 
-	DEBUGP("Applying relocate section %u to %u\n",
+	DEBUGP("%s relocate section %u to %u\n",
+	       (apply) ? "Applying" : "Clearing",
 	       relsec, sechdrs[relsec].sh_info);
 	for (i = 0; i < sechdrs[relsec].sh_size / sizeof(*rel); i++) {
 		/* This is where to make the change */
@@ -159,66 +159,58 @@ static int __write_relocate_add(Elf64_Shdr *sechdrs,
 		       (int)ELF64_R_TYPE(rel[i].r_info),
 		       sym->st_value, rel[i].r_addend, (u64)loc);
 
-		val = sym->st_value + rel[i].r_addend;
+		/* Calculate value (or zero if clearing) */
+		if (apply) {
+			val = sym->st_value + rel[i].r_addend;
 
+			switch (ELF64_R_TYPE(rel[i].r_info)) {
+			case R_X86_64_PC32:
+			case R_X86_64_PLT32:
+			case R_X86_64_PC64:
+				val -= (u64)loc;
+				break;
+			}
+		} else {
+			val = 0ULL;
+		}
+
+		/* Apply/clear relocation value */
 		switch (ELF64_R_TYPE(rel[i].r_info)) {
 		case R_X86_64_NONE:
 			break;
 		case R_X86_64_64:
-			if (apply) {
-				if (*(u64 *)loc != 0)
-					goto invalid_relocation;
-				write(loc, &val, 8);
-			} else {
-				write(loc, &zero, 8);
-			}
+			if (apply && *(u64 *)loc != 0)
+				goto invalid_relocation;
+			write(loc, &val, 8);
 			break;
 		case R_X86_64_32:
-			if (apply) {
-				if (*(u32 *)loc != 0)
-					goto invalid_relocation;
-				write(loc, &val, 4);
-				if (val != *(u32 *)loc)
-					goto overflow;
-			} else {
-				write(loc, &zero, 4);
-			}
+			if (apply && *(u32 *)loc != 0)
+				goto invalid_relocation;
+			write(loc, &val, 4);
+			if (val != *(u32 *)loc)
+				goto overflow;
 			break;
 		case R_X86_64_32S:
-			if (apply) {
-				if (*(s32 *)loc != 0)
-					goto invalid_relocation;
-				write(loc, &val, 4);
-				if ((s64)val != *(s32 *)loc)
-					goto overflow;
-			} else {
-				write(loc, &zero, 4);
-			}
+			if (apply && *(s32 *)loc != 0)
+				goto invalid_relocation;
+			write(loc, &val, 4);
+			if ((s64)val != *(s32 *)loc)
+				goto overflow;
 			break;
 		case R_X86_64_PC32:
 		case R_X86_64_PLT32:
-			if (apply) {
-				if (*(u32 *)loc != 0)
-					goto invalid_relocation;
-				val -= (u64)loc;
-				write(loc, &val, 4);
+			if (apply && *(u32 *)loc != 0)
+				goto invalid_relocation;
+			write(loc, &val, 4);
 #if 0
-				if ((s64)val != *(s32 *)loc)
-					goto overflow;
+			if ((s64)val != *(s32 *)loc)
+				goto overflow;
 #endif
-			} else {
-				write(loc, &zero, 4);
-			}
 			break;
 		case R_X86_64_PC64:
-			if (apply) {
-				if (*(u64 *)loc != 0)
-					goto invalid_relocation;
-				val -= (u64)loc;
-				write(loc, &val, 8);
-			} else {
-				write(loc, &zero, 8);
-			}
+			if (apply && *(u64 *)loc != 0)
+				goto invalid_relocation;
+			write(loc, &val, 8);
 			break;
 		default:
 			pr_err("%s: Unknown rela relocation: %llu\n",
