@@ -517,11 +517,12 @@ static int restore_r2(const char *name, u32 *instruction, struct module *me)
 	return 1;
 }
 
-int apply_relocate_add(Elf64_Shdr *sechdrs,
-		       const char *strtab,
-		       unsigned int symindex,
-		       unsigned int relsec,
-		       struct module *me)
+static int write_relocate_add(Elf64_Shdr *sechdrs,
+		   const char *strtab,
+		   unsigned int symindex,
+		   unsigned int relsec,
+		   struct module *me,
+		   bool apply)
 {
 	unsigned int i;
 	Elf64_Rela *rela = (void *)sechdrs[relsec].sh_addr;
@@ -555,126 +556,207 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 		       strtab + sym->st_name, (unsigned long)sym->st_value,
 		       (long)rela[i].r_addend);
 
-		/* `Everything is relative'. */
-		value = sym->st_value + rela[i].r_addend;
+		/* Calculate value (or zero if clearing) */
+		if (apply) {
 
+			/* `Everything is relative'. */
+			value = sym->st_value + rela[i].r_addend;
+
+			switch (ELF64_R_TYPE(rela[i].r_info)) {
+			case R_PPC64_TOC16:
+				/* Subtract TOC pointer */
+				value -= my_r2(sechdrs, me);
+				if (value + 0x8000 > 0xffff) {
+					pr_err("%s: bad TOC16 relocation (0x%lx)\n",
+					       me->name, value);
+					return -ENOEXEC;
+				}
+				break;
+
+			case R_PPC64_TOC16_LO:
+				/* Subtract TOC pointer */
+				value -= my_r2(sechdrs, me);
+				value = (*((uint16_t *) location) & ~0xffff) |
+					(value & 0xffff);
+				break;
+
+			case R_PPC64_TOC16_DS:
+				/* Subtract TOC pointer */
+				value -= my_r2(sechdrs, me);
+				if ((value & 3) != 0 || value + 0x8000 > 0xffff) {
+					pr_err("%s: bad TOC16_DS relocation (0x%lx)\n",
+					       me->name, value);
+					return -ENOEXEC;
+				}
+				value = (*((uint16_t *) location) & ~0xfffc) |
+					(value & 0xfffc);
+				break;
+
+			case R_PPC64_TOC16_LO_DS:
+				/* Subtract TOC pointer */
+				value -= my_r2(sechdrs, me);
+				if ((value & 3) != 0) {
+					pr_err("%s: bad TOC16_LO_DS relocation (0x%lx)\n",
+					       me->name, value);
+					return -ENOEXEC;
+				}
+				value = (*((uint16_t *) location) & ~0xfffc) |
+					(value & 0xfffc);
+				break;
+
+			case R_PPC64_TOC16_HA:
+				/* Subtract TOC pointer */
+				value -= my_r2(sechdrs, me);
+				value = ((value + 0x8000) >> 16);
+				value = (*((uint16_t *) location) & ~0xffff) |
+					(value & 0xffff);
+				break;
+
+			case R_PPC_REL24:
+				/* FIXME: Handle weak symbols here --RR */
+				if (sym->st_shndx == SHN_UNDEF ||
+				    sym->st_shndx == SHN_LIVEPATCH) {
+					/* External: go via stub */
+					value = stub_for_addr(sechdrs, value, me,
+							strtab + sym->st_name);
+					if (!value)
+						return -ENOENT;
+					if (!restore_r2(strtab + sym->st_name,
+								(u32 *)location + 1, me))
+						return -ENOEXEC;
+				} else
+					value += local_entry_offset(sym);
+
+				/* Convert value to relative */
+				value -= (unsigned long)location;
+				if (value + 0x2000000 > 0x3ffffff || (value & 3) != 0){
+					pr_err("%s: REL24 %li out of range!\n",
+					       me->name, (long int)value);
+					return -ENOEXEC;
+				}
+
+				/* Only replace bits 2 through 26 */
+				value = (*(uint32_t *)location & ~PPC_LI_MASK) | PPC_LI(value);
+				break;
+
+			case R_PPC64_REL64:
+				/* 64 bits relative (used by features fixups) */
+				value -= (unsigned long)location;
+				break;
+
+			case R_PPC64_REL32:
+				/* 32 bits relative (used by relative exception tables) */
+				value -= (unsigned long)location;
+				if (value + 0x80000000 > 0xffffffff) {
+					pr_err("%s: REL32 %li out of range!\n",
+					       me->name, (long int)value);
+					return -ENOEXEC;
+				}
+				break;
+
+			case R_PPC64_ENTRY:
+				/*
+				 * Optimize ELFv2 large code model entry point if
+				 * the TOC is within 2GB range of current location.
+				 */
+				value = my_r2(sechdrs, me) - (unsigned long)location;
+				if (value + 0x80008000 > 0xffffffff)
+					break; /* JL TODO: this should be a continue? */
+				break;
+
+			case R_PPC64_REL16_HA:
+				/* Subtract location pointer */
+				value -= (unsigned long)location;
+				value = ((value + 0x8000) >> 16);
+				value = (*((uint16_t *) location) & ~0xffff) |
+					(value & 0xffff);
+				break;
+
+			case R_PPC64_REL16_LO:
+				/* Subtract location pointer */
+				value -= (unsigned long)location;
+				value = (*((uint16_t *) location) & ~0xffff) |
+					(value & 0xffff);
+				break;
+			}
+		} else {
+			if (ELF64_R_TYPE(rela[i].r_info) == R_PPC_REL24) {
+				/* skip mprofile and ftrace calls, same as restore_r2() */
+				if (is_mprofile_ftrace_call(me->core_kallsyms.strtab + sym->st_name))
+					continue;
+
+				/* skip sibling call, same as restore_r2() */
+				if (!instr_is_relative_link_branch(ppc_inst(*(u32 *)location)))
+					continue;
+
+				/*
+				 * Patch location + 1 back to NOP so the next
+				 * apply_relocate_add() call (reload the module) will not
+				 * fail the sanity check in restore_r2():
+				 *
+				 *         if (*instruction != PPC_RAW_NOP()) {
+				 *             pr_err(...);
+				 *             return 0;
+				 *         }
+				 */
+				location = (unsigned long *)((u32 *)location + 1);
+				value = PPC_RAW_NOP();
+			} else {
+				value = 0UL;
+			}
+		}
+
+		/* Apply/clear relocation value */
 		switch (ELF64_R_TYPE(rela[i].r_info)) {
 		case R_PPC64_ADDR32:
+		case R_PPC64_REL32:
+			if (apply && *(u32 *)location != 0)
+				goto invalid_relocation;
 			/* Simply set it */
 			*(u32 *)location = value;
 			break;
 
 		case R_PPC64_ADDR64:
+			if (apply && *(unsigned long *)location != 0)
+				goto invalid_relocation;
 			/* Simply set it */
 			*(unsigned long *)location = value;
 			break;
 
 		case R_PPC64_TOC:
+			if (apply && *(unsigned long *)location != 0)
+				goto invalid_relocation;
 			*(unsigned long *)location = my_r2(sechdrs, me);
 			break;
 
 		case R_PPC64_TOC16:
-			/* Subtract TOC pointer */
-			value -= my_r2(sechdrs, me);
-			if (value + 0x8000 > 0xffff) {
-				pr_err("%s: bad TOC16 relocation (0x%lx)\n",
-				       me->name, value);
-				return -ENOEXEC;
-			}
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xffff)
-				| (value & 0xffff);
-			break;
-
 		case R_PPC64_TOC16_LO:
-			/* Subtract TOC pointer */
-			value -= my_r2(sechdrs, me);
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xffff)
-				| (value & 0xffff);
+		case R_PPC64_TOC16_HA:
+		case R_PPC64_REL16_HA:
+		case R_PPC64_REL16_LO:
+			if (apply && (*((uint16_t *) location) & 0xffff) != 0)
+				goto invalid_relocation;
+			*((uint16_t *) location) = value;
 			break;
 
 		case R_PPC64_TOC16_DS:
-			/* Subtract TOC pointer */
-			value -= my_r2(sechdrs, me);
-			if ((value & 3) != 0 || value + 0x8000 > 0xffff) {
-				pr_err("%s: bad TOC16_DS relocation (0x%lx)\n",
-				       me->name, value);
-				return -ENOEXEC;
-			}
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xfffc)
-				| (value & 0xfffc);
-			break;
-
 		case R_PPC64_TOC16_LO_DS:
-			/* Subtract TOC pointer */
-			value -= my_r2(sechdrs, me);
-			if ((value & 3) != 0) {
-				pr_err("%s: bad TOC16_LO_DS relocation (0x%lx)\n",
-				       me->name, value);
-				return -ENOEXEC;
-			}
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xfffc)
-				| (value & 0xfffc);
-			break;
-
-		case R_PPC64_TOC16_HA:
-			/* Subtract TOC pointer */
-			value -= my_r2(sechdrs, me);
-			value = ((value + 0x8000) >> 16);
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xffff)
-				| (value & 0xffff);
+			if (apply && (*((uint16_t *) location) & 0xfffc) != 0)
+				goto invalid_relocation;
+			*((uint16_t *) location) = value;
 			break;
 
 		case R_PPC_REL24:
-			/* FIXME: Handle weak symbols here --RR */
-			if (sym->st_shndx == SHN_UNDEF ||
-			    sym->st_shndx == SHN_LIVEPATCH) {
-				/* External: go via stub */
-				value = stub_for_addr(sechdrs, value, me,
-						strtab + sym->st_name);
-				if (!value)
-					return -ENOENT;
-				if (!restore_r2(strtab + sym->st_name,
-							(u32 *)location + 1, me))
-					return -ENOEXEC;
-			} else
-				value += local_entry_offset(sym);
-
-			/* Convert value to relative */
-			value -= (unsigned long)location;
-			if (value + 0x2000000 > 0x3ffffff || (value & 3) != 0){
-				pr_err("%s: REL24 %li out of range!\n",
-				       me->name, (long int)value);
-				return -ENOEXEC;
-			}
-
-			/* Only replace bits 2 through 26 */
-			value = (*(uint32_t *)location & ~PPC_LI_MASK) | PPC_LI(value);
-
+			/* restore_r2() already checked for invalid relocation */
 			if (patch_instruction((u32 *)location, ppc_inst(value)))
 				return -EFAULT;
-
 			break;
 
 		case R_PPC64_REL64:
+			if (apply && *location != 0)
+				goto invalid_relocation;
 			/* 64 bits relative (used by features fixups) */
-			*location = value - (unsigned long)location;
-			break;
-
-		case R_PPC64_REL32:
-			/* 32 bits relative (used by relative exception tables) */
-			/* Convert value to relative */
-			value -= (unsigned long)location;
-			if (value + 0x80000000 > 0xffffffff) {
-				pr_err("%s: REL32 %li out of range!\n",
-				       me->name, (long int)value);
-				return -ENOEXEC;
-			}
-			*(u32 *)location = value;
+			*location = value;
 			break;
 
 		case R_PPC64_TOCSAVE:
@@ -686,13 +768,6 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 			break;
 
 		case R_PPC64_ENTRY:
-			/*
-			 * Optimize ELFv2 large code model entry point if
-			 * the TOC is within 2GB range of current location.
-			 */
-			value = my_r2(sechdrs, me) - (unsigned long)location;
-			if (value + 0x80008000 > 0xffffffff)
-				break;
 			/*
 			 * Check for the large code model prolog sequence:
 		         *	ld r2, ...(r12)
@@ -711,23 +786,6 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 			((uint32_t *)location)[1] = PPC_RAW_ADDI(_R2, _R2, PPC_LO(value));
 			break;
 
-		case R_PPC64_REL16_HA:
-			/* Subtract location pointer */
-			value -= (unsigned long)location;
-			value = ((value + 0x8000) >> 16);
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xffff)
-				| (value & 0xffff);
-			break;
-
-		case R_PPC64_REL16_LO:
-			/* Subtract location pointer */
-			value -= (unsigned long)location;
-			*((uint16_t *) location)
-				= (*((uint16_t *) location) & ~0xffff)
-				| (value & 0xffff);
-			break;
-
 		default:
 			pr_err("%s: Unknown ADD relocation: %lu\n",
 			       me->name,
@@ -737,6 +795,21 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 	}
 
 	return 0;
+
+invalid_relocation:
+	pr_err("ppc64le/modules: Skipping invalid relocation target, existing value is nonzero for type %d, location %p, value %lx\n",
+	       (int)ELF64_R_TYPE(rela[i].r_info), location, value);
+	return -ENOEXEC;
+
+}
+
+int apply_relocate_add(Elf64_Shdr *sechdrs,
+		   const char *strtab,
+		   unsigned int symindex,
+		   unsigned int relsec,
+		   struct module *me)
+{
+	return write_relocate_add(sechdrs, strtab, symindex, relsec, me, true);
 }
 
 #ifdef CONFIG_LIVEPATCH
@@ -746,57 +819,7 @@ void clear_relocate_add(Elf64_Shdr *sechdrs,
 		       unsigned int relsec,
 		       struct module *me)
 {
-	unsigned int i;
-	Elf64_Rela *rela = (void *)sechdrs[relsec].sh_addr;
-	Elf64_Sym *sym;
-	unsigned long *location;
-	const char *symname;
-	u32 *instruction;
-
-	pr_debug("Clearing ADD relocate section %u to %u\n", relsec,
-		 sechdrs[relsec].sh_info);
-
-	for (i = 0; i < sechdrs[relsec].sh_size / sizeof(*rela); i++) {
-		location = (void *)sechdrs[sechdrs[relsec].sh_info].sh_addr
-			+ rela[i].r_offset;
-		sym = (Elf64_Sym *)sechdrs[symindex].sh_addr
-			+ ELF64_R_SYM(rela[i].r_info);
-		symname = me->core_kallsyms.strtab
-			+ sym->st_name;
-
-		if (ELF64_R_TYPE(rela[i].r_info) != R_PPC_REL24)
-			continue;
-		/*
-		 * reverse the operations in apply_relocate_add() for case
-		 * R_PPC_REL24.
-		 */
-		if (sym->st_shndx != SHN_UNDEF &&
-		    sym->st_shndx != SHN_LIVEPATCH)
-			continue;
-
-		/* skip mprofile and ftrace calls, same as restore_r2() */
-		if (is_mprofile_ftrace_call(symname))
-			continue;
-
-		instruction = (u32 *)location;
-		/* skip sibling call, same as restore_r2() */
-		if (!instr_is_relative_link_branch(ppc_inst(*instruction)))
-			continue;
-
-		instruction += 1;
-		/*
-		 * Patch location + 1 back to NOP so the next
-		 * apply_relocate_add() call (reload the module) will not
-		 * fail the sanity check in restore_r2():
-		 *
-		 *         if (*instruction != PPC_RAW_NOP()) {
-		 *             pr_err(...);
-		 *             return 0;
-		 *         }
-		 */
-		patch_instruction(instruction, ppc_inst(PPC_RAW_NOP()));
-	}
-
+	write_relocate_add(sechdrs, strtab, symindex, relsec, me, false);
 }
 #endif
 
