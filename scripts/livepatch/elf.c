@@ -628,6 +628,7 @@ static int write_file(struct elf *elf, const char *file)
 	memset(&ehout, 0, sizeof(ehout));
 	ehout.e_ident[EI_DATA] = eh.e_ident[EI_DATA];
 	ehout.e_machine = eh.e_machine;
+	ehout.e_flags = eh.e_flags;
 	ehout.e_type = eh.e_type;
 	ehout.e_version = EV_CURRENT;
 	ehout.e_shstrndx = find_section_by_name(elf, ".shstrtab")->idx;
