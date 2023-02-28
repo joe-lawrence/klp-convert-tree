@@ -688,27 +688,35 @@ static int write_file(struct elf *elf, const char *file)
 
 int elf_write_file(struct elf *elf, const char *file)
 {
-	int ret_shstrtab;
-	int ret_strtab;
-	int ret_symtab;
-	int ret_relas;
+	int ret_shstrtab = 0;
+	int ret_strtab = 0;
+	int ret_symtab = 0;
+	int ret_relas = 0;
 	int ret;
 
 	ret_shstrtab = update_shstrtab(elf);
-	if (ret_shstrtab < 0)
-		return ret_shstrtab;
+	if (ret_shstrtab < 0) {
+		ret = ret_shstrtab;
+		goto out;
+	}
 
 	ret_strtab = update_strtab(elf);
-	if (ret_strtab < 0)
-		return ret_strtab;
+	if (ret_strtab < 0) {
+		ret = ret_strtab;
+		goto out;
+	}
 
 	ret_symtab = update_symtab(elf);
-	if (ret_symtab < 0)
-		return ret_symtab;
+	if (ret_symtab < 0) {
+		ret = ret_symtab;
+		goto out;
+	}
 
 	ret_relas = update_relas(elf);
-	if (ret_relas < 0)
-		return ret_relas;
+	if (ret_relas < 0) {
+		ret = ret_relas;
+		goto out;
+	}
 
 	update_groups(elf);
 
@@ -716,6 +724,7 @@ int elf_write_file(struct elf *elf, const char *file)
 	if (ret)
 		return ret;
 
+out:
 	if (ret_relas > 0)
 		free_relas(elf);
 	if (ret_symtab > 0)
@@ -725,7 +734,7 @@ int elf_write_file(struct elf *elf, const char *file)
 	if (ret_shstrtab > 0)
 		free_shstrtab(elf);
 
-	return 0;
+	return ret;
 }
 
 struct elf *elf_open(const char *name)
