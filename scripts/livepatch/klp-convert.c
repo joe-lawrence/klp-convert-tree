@@ -244,9 +244,8 @@ static bool sympos_sanity_check(struct elf *klp_elf)
 			if (sp->pos != aux->pos &&
 			    strcmp(sp->object_name, aux->object_name) == 0 &&
 			    strcmp(sp->symbol_name, aux->symbol_name) == 0) {
-				WARN("Conflicting KLP_SYMPOS definition: %s.%s,%d vs. %s.%s,%d.",
-				sp->object_name, sp->symbol_name, sp->pos,
-				aux->object_name, aux->symbol_name, aux->pos);
+				WARN("Conflicting KLP_SYMPOS definition: %s.%s %d vs. %d.",
+				sp->object_name, sp->symbol_name, sp->pos, aux->pos);
 				sane = false;
 			}
 		}
@@ -260,7 +259,7 @@ static bool sympos_sanity_check(struct elf *klp_elf)
 			}
 		}
 		if (!found_rela) {
-			//sane = false;
+			sane = false;
 			WARN("Couldn't find rela for annotated symbol: %s",
 				sp->symbol_name);
 		}
@@ -402,10 +401,8 @@ static struct symbol_entry *find_sym_entry_by_name(char *name)
 			found = e;
 		}
 	}
-	if (found)
-		return found;
 
-	return NULL;
+	return found;
 }
 
 /* Checks if sympos is valid, otherwise prints valid sympos list */
@@ -504,7 +501,10 @@ static bool find_sympos(struct symbol *s, struct sympos *sp)
 		return false;
 	}
 
-	/* search symbol in symbols list */
+	/*
+	 * user didn't specify, so search the symbols list. A pos of 0
+	 * indicates this should be a unique symbol.
+	 */
 	entry = find_sym_entry_by_name(s->name);
 	if (entry) {
 		sp->symbol_name = entry->symbol_name;
