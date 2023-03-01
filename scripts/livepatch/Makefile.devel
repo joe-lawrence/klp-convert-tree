@@ -2,8 +2,10 @@ CFLAGS += -MMD -MP
 CFLAGS += -Wall -g -Werror -Wsign-compare
 LDLIBS = -lelf
 
-TARGETS = klp-convert
+TARGETS = klp-convert \
+	  klp-convert-wrapper
 SOURCES = klp-convert.c \
+	  klp-convert-wrapper.c \
           elf.c
 
 all: $(TARGETS)
@@ -11,6 +13,8 @@ all: $(TARGETS)
 -include $(SOURCES:.c=.d)
 
 klp-convert: klp-convert.o elf.o
+
+klp-convert-wrapper: klp-convert-wrapper.o
 
 tests: klp-convert
 	$(MAKE) -C tests/

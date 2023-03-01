@@ -74,7 +74,7 @@ targets += $(modules:%.o=%.ko) $(modules:%.o=%.mod.o)
 	+$(call if_changed,ld_ko_o)
 
 quiet_cmd_klp_convert = KLP     $@
-      cmd_klp_convert = scripts/livepatch/klp-convert symbols.klp $< $@
+      cmd_klp_convert = scripts/livepatch/klp-convert-wrapper $(objtree)/scripts/livepatch/klp-convert symbols.klp $< $@
 
 $(modules-klp:%.o=%.ko): %.ko: %.tmp.ko FORCE
 	$(call if_changed,klp_convert)
